@@ -1,84 +1,70 @@
-# Push a Skill to the Library Source
+# Push a Library Item Back to Its Source
 
 ## Context
-The user has improved a skill locally and wants to push changes back to the source.
+The user has improved a locally installed skill, agent, or prompt and wants to push changes back to the source.
 
 ## Input
-The user provides a skill name or description.
+The user provides an item name or description.
 
 ## Steps
 
 ### 1. Find the Entry
 - Read `library.yaml`
 - Search across all sections for the matching entry
-- If no match, tell the user the item wasn't found in the catalog
+- If no match, tell the user the item was not found in the catalog
 
-### 2. Locate the Local Copy
+### 2. Check Type Support
+- `push` is supported only for source-backed entries:
+  - skills
+  - agents
+  - prompts
+- If the entry is an `mcp` or `plugin`, stop and tell the user:
+  - MCPs are shareable config templates that should be edited at their source JSON file
+  - Plugins are cataloged as marketplace references, not local runtime payloads
+  - `/library push` for MCPs and plugins is not supported in v1
+
+### 3. Locate the Local Copy
 - Check the default directory for the type (from `default_dirs`)
 - Check the global directory
 - If found in multiple places, ask which one to push
-- If not found locally, tell the user there's nothing to push
+- If not found locally, tell the user there is nothing to push
 
-### 3. Check for Conflicts
+### 4. Check for Conflicts
 
-**If source is a local path:**
+**If source is a local path**
 - Compare the local installed copy with the source
-- If the source has been modified since last pull, warn the user:
-  "The source has changes that aren't in your local copy. Pushing will overwrite them. Continue?"
+- If the source has changed since last pull, warn the user before overwriting it
 
-**If source is a GitHub URL:**
-- Clone the repo to a temp directory (shallow):
+**If source is a GitHub URL**
+- Clone the repo to a temporary directory:
   ```bash
   tmp_dir=$(mktemp -d)
   git clone --depth 1 --branch <branch> <clone_url> "$tmp_dir"
   ```
-- Compare the skill directory in the clone with the local copy
-- If they differ AND the remote has changes not in the local copy, warn about conflict
-- Ask the user to resolve before continuing
+- Compare the local copy with the referenced directory or file in the clone
+- If the remote has changes not present locally, warn the user and ask them to resolve the conflict first
 
-### 4. Push to Source
+### 5. Push to Source
 
-**If source is a local path:**
-- Copy the entire local directory to the source location, overwriting:
-  ```bash
-  cp -R <local_directory>/ <source_parent_directory>/
-  ```
-- Confirm the overwrite
+**If source is a local path**
+- For skills, copy the full local directory back to the source parent directory
+- For agents and prompts, copy the local file back to the source file path
 
-**If source is a GitHub URL:**
-- If we don't already have a tmp clone from step 3, clone now:
+**If source is a GitHub URL**
+- Use the temporary clone from step 4, or create it now
+- Overwrite only the referenced item:
+  - skills → replace the referenced directory
+  - agents and prompts → replace the referenced file
+- Stage only the relevant path
+- Commit with:
   ```bash
-  tmp_dir=$(mktemp -d)
-  git clone --depth 1 --branch <branch> <clone_url> "$tmp_dir"
+  git commit -m "library: updated <name> <brief description>"
   ```
-- Remove the old skill directory in the clone:
-  ```bash
-  rm -rf "$tmp_dir/<skill_path_in_repo>"
-  ```
-- Copy the local version into the clone:
-  ```bash
-  cp -R <local_directory>/ "$tmp_dir/<skill_path_in_repo>/"
-  ```
-- Stage ONLY the relevant changes:
-  ```bash
-  cd "$tmp_dir"
-  git add <skill_path_in_repo>
-  ```
-- Commit with the standard format:
-  ```bash
-  git commit -m "library: updated <name> <brief description of what changed>"
-  ```
-- Push:
-  ```bash
-  git push
-  ```
-- Clean up:
-  ```bash
-  rm -rf "$tmp_dir"
-  ```
+- Push the changes
+- Clean up the temporary clone
 
-### 5. Confirm
+### 6. Confirm
 Tell the user:
 - What was pushed and where
 - The commit message used
-- If it was a local path push, confirm the overwrite
+- If the source was a local path, confirm the overwrite

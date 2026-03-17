@@ -1,7 +1,7 @@
 # Sync All Installed Items
 
 ## Context
-Refresh every locally installed skill, agent, and prompt by re-pulling from its source. A fast, lazy "make sure everything is up to date" command.
+Refresh every locally installed or configured skill, agent, prompt, MCP, and plugin from the catalog. This is the fast "make everything current" command.
 
 ## Steps
 
@@ -14,66 +14,76 @@ git pull
 
 ### 2. Read the Catalog
 - Read `library.yaml`
-- Parse all entries from `library.skills`, `library.agents`, and `library.prompts`
+- Parse all entries from:
+  - `library.skills`
+  - `library.agents`
+  - `library.prompts`
+  - `library.mcps`
+  - `library.plugins`
 
 ### 3. Find All Installed Items
-For each entry in the catalog:
-- Determine the type (skill, agent, prompt) and corresponding directories from `default_dirs`
-- Check if a directory or file matching the entry name exists in the **default** directory
-- Check if a directory or file matching the entry name exists in the **global** directory
-- Search recursively for name matches
-- Collect every entry that is installed locally (either default or global)
-- If nothing is installed, tell the user and exit
 
-### 4. Re-pull Each Installed Item
-For each installed entry, fetch the latest from its source:
+**For skills, agents, and prompts**
+- Determine the directories from `default_dirs`
+- Check default and global install locations
+- Search recursively for matching names
+- Collect installed entries with their detected location
 
-**If source is a local path** (starts with `/` or `~`):
-- Resolve `~` to the home directory
-- Get the parent directory of the referenced file
-- For skills: copy the entire parent directory to the target:
-  ```bash
-  cp -R <parent_directory>/ <target_directory>/<name>/
-  ```
-- For agents: copy just the agent file to the target:
-  ```bash
-  cp <agent_file> <target_directory>/<agent_name>.md
-  ```
-- For prompts: copy just the prompt file to the target:
-  ```bash
-  cp <prompt_file> <target_directory>/<prompt_name>.md
-  ```
+**For MCPs**
+- Treat an MCP as installed if `claude mcp get <name>` succeeds
+- Prefer the scope reported by Claude; otherwise fall back to `default_scopes.mcps`
 
-**If source is a GitHub URL**:
-- Parse the URL to extract: `org`, `repo`, `branch`, `file_path`
-  - Browser URL pattern: `https://github.com/<org>/<repo>/blob/<branch>/<path>`
-  - Raw URL pattern: `https://raw.githubusercontent.com/<org>/<repo>/<branch>/<path>`
-- Determine the clone URL: `https://github.com/<org>/<repo>.git`
-- Determine the parent directory path within the repo (everything before the filename)
-- Clone into a temporary directory:
-  ```bash
-  tmp_dir=$(mktemp -d)
-  git clone --depth 1 --branch <branch> https://github.com/<org>/<repo>.git "$tmp_dir"
-  ```
-- Copy the parent directory of the file to the target:
-  ```bash
-  cp -R "$tmp_dir/<parent_path>/" <target_directory>/<name>/
-  ```
-- Clean up:
-  ```bash
-  rm -rf "$tmp_dir"
-  ```
+**For plugins**
+- Run `claude plugin list --json`
+- Treat a plugin as installed if `<plugin-or-name>@<marketplace>` appears in the list
+- Record the detected scope from Claude's JSON output
 
-**If clone fails (private repo)**, try SSH:
-  ```bash
-  git clone --depth 1 --branch <branch> git@github.com:<org>/<repo>.git "$tmp_dir"
-  ```
+If nothing is installed or configured, tell the user and exit.
 
-### 5. Resolve Dependencies
+### 4. Resolve Dependencies
 For each installed entry that has a `requires` field:
-- Check if each dependency is also installed
-- If a dependency is not installed, pull it as well
-- Process dependencies before the items that require them
+- Check whether each dependency is already installed or configured
+- If not, install it first using the matching `use` workflow
+- Support all typed dependency forms:
+  - `skill:name`
+  - `agent:name`
+  - `prompt:name`
+  - `mcp:name`
+  - `plugin:name`
+
+### 5. Refresh Each Installed Item
+
+**For skills, agents, and prompts**
+- Re-fetch from local path or GitHub source exactly like `/library use`
+- Overwrite the installed target with the latest source contents
+
+**For MCPs**
+- Fetch the latest JSON object from the MCP `source`
+- Validate it is still compatible with `claude mcp add-json`
+- Refresh by replacing the configured entry:
+  ```bash
+  claude mcp remove --scope <scope> <name>
+  claude mcp add-json --scope <scope> <name> '<json>'
+  ```
+- Do not expand env placeholders or inject raw secrets during sync
+
+**For plugins**
+- Ensure the resolved Claude settings file still contains:
+  - `extraKnownMarketplaces.<marketplace>.source = <marketplace_source>`
+  - `enabledPlugins["<plugin-or-name>@<marketplace>"] = true`
+- Preserve unrelated settings keys
+- Refresh the marketplace first:
+  - If the source can be expressed as a marketplace CLI argument (`github`, `git`, `url`, `file`, `directory`), use `claude plugin marketplace add` when missing and `claude plugin marketplace update <marketplace>` when present
+  - For settings-only source kinds such as `npm` or `hostPattern`, write the settings entry first, then run `claude plugin marketplace update <marketplace>` if Claude already knows the marketplace
+- Refresh the plugin:
+  ```bash
+  claude plugin update --scope <scope> <plugin-or-name>@<marketplace>
+  ```
+- If the plugin is enabled in settings but missing from the installed list, install it:
+  ```bash
+  claude plugin install --scope <scope> <plugin-or-name>@<marketplace>
+  ```
+- Never treat `~/.claude/plugins/cache` or `installed_plugins.json` as the source of truth
 
 ### 6. Report Results
 Display a summary table:
@@ -83,12 +93,13 @@ Display a summary table:
 
 | Type | Name | Status |
 |------|------|--------|
-| skill | skill-name | refreshed |
-| agent | agent-name | refreshed |
-| skill | other-skill | failed: <reason> |
+| skill | deploy | refreshed |
+| mcp | github | refreshed (project) |
+| plugin | review-toolkit | updated (project) |
+| prompt | commit-message | failed: <reason> |
 
 Synced: X items
 Failed: Y items
 ```
 
-If any items failed (e.g., network error, missing source), list them with the reason so the user can fix individually.
+If any items failed, list the reason so the user can fix them individually.

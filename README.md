@@ -1,48 +1,57 @@
 # The Library
 
-A meta-skill for private-first distribution of agentics (skills, agents, and prompts) across agents, devices, and teams.
+A meta-skill for private-first distribution of agentics across agents, devices, and teams: skills, agents, prompts, MCPs, and Claude plugins.
 
 ![The Library](images/10_meta_skill.svg)
 
 ## Who This Is For
 
-If you're an engineer working on 10+ codebases with agents and you're building specialized private skills, agents, and prompts — this was made for you.
+If you work across lots of codebases and keep building specialized agent tooling, this was made for you.
 
-If you work in one or two repos, you don't need this. If you install skills from the public internet without reviewing them, this isn't for you either.
+If you only work in one or two repos, or you mostly install public tools without reviewing them, you probably do not need this.
 
-The Library solves a specific problem: you've built powerful agentics scattered across repos, devices, and teams. They're duplicated, out of sync, and hard to coordinate. This gives you a single reference catalog to distribute them privately.
+The Library solves a specific problem: your best agentics end up scattered across repos, machines, and teammates. They drift out of sync, get copied by hand, and become hard to trust. The Library gives you one private catalog that can rehydrate those capabilities anywhere.
 
 ## What It Is
 
-The Library is a single skill whose only job is to manage other skills. It's a catalog of references — local file paths and GitHub repo URLs — that point to where your agentics live. Nothing is copied or installed until you ask for it.
+The Library is a single skill whose job is to manage other agent capabilities.
 
-Think of it as a `package.json` for agent capabilities — but instead of packages, you're managing skills, agents, and prompts. Instead of a registry, you're pointing at your own private GitHub repos and local paths.
+It is a catalog of references:
+- local file paths
+- GitHub file URLs
+- MCP JSON definitions
+- Claude plugin marketplace definitions
 
-**This is a pure agent application.** There are no scripts, no CLIs, no dependencies, no build tools. The entire application is encoded in `SKILL.md` and a set of cookbook instructions that teach the agent exactly what to do. The agent IS the runtime. This matters because:
+Nothing is copied or configured until you ask for it.
 
-- Any agent harness that reads skill files can run it (Claude Code, Pi, etc.)
-- You can modify behavior by editing markdown, not code
-- The skill can be extended, forked, and adapted instantly
-- An orchestrator agent can chain library commands without any tooling overhead
+Think of it as a `package.json` for your private agent stack, except the entries are not npm packages. They are the skills, agents, prompts, MCPs, and plugins your team actually uses.
+
+**This is still a pure agent application.** The Library ships no custom scripts or binaries. The behavior lives in `SKILL.md` and the cookbooks, and the agent uses native Claude surfaces like `/mcp` and `/plugin` when it needs to configure Claude-native integrations.
 
 ## Why It Exists
 
 ![The Problem: Skill Sprawl](images/26_problem_skill_sprawl.svg)
 
-As you build with AI agents, you accumulate skills, custom agents, and prompts — potentially hundreds of them. You need to:
+As you build with AI agents, you accumulate a lot of private leverage:
+- skills
+- specialized agents
+- reusable prompts and commands
+- MCP definitions for external systems
+- plugin installs and team marketplaces
 
-- **Reuse** them across projects without copy-pasting
-- **Distribute** them to your agents running on other devices (Mac mini, remote servers, cloud sandboxes)
-- **Share** them with your team without making everything public
-- **Keep them private** — these are specialized capabilities built for competitive edge
-- **Stay in sync** — one source of truth, not 10 stale copies
+You need to:
+- reuse them across projects without copy-pasting
+- distribute them to other machines and sandboxes
+- share them with teammates without making everything public
+- keep them private because they are competitive advantage
+- keep them in sync instead of managing stale copies
 
 ![The Problem: Siloed Teams](images/32_problem_team_sharing.svg)
 
-Existing solutions don't fit:
-- **Global `~/.claude/*`** — exposes everything to every agent. Global is the opposite of specialized.
-- **Claude Code plugins** — requires marketplace infrastructure, manifests, and locks you into one platform.
-- **Single monorepo** — doesn't reflect reality. You build agentics in specific codebases for specific use cases.
+Existing approaches do not quite solve this:
+- Global `~/.claude/*` exposes everything to every workflow.
+- Standalone `/plugin` and `/mcp` commands configure one Claude surface at a time, but do not give you one private catalog spanning all your agentics.
+- A single monorepo rarely matches how teams actually build and own capabilities.
 
 ## How It Works
 
@@ -62,182 +71,257 @@ default_dirs:
     - default: .claude/commands/
     - global: ~/.claude/commands/
 
+default_scopes:
+  mcps:
+    - default: project
+    - local: local
+    - global: user
+  plugins:
+    - default: project
+    - local: local
+    - global: user
+
 library:
   skills:
-    - name: my-skill
-      description: What this skill does
-      source: /Users/me/projects/tools/skills/my-skill/SKILL.md
-      requires: [agent:helper-agent]
-    - name: remote-skill
-      description: A skill from a private repo
-      source: https://github.com/myorg/private-skills/blob/main/skills/remote-skill/SKILL.md
-  agents: []
-  prompts: []
+    - name: deploy
+      description: Deploy infrastructure changes safely
+      source: https://github.com/myorg/infra-tools/blob/main/skills/deploy/SKILL.md
+      requires: [agent:reviewer]
+
+  agents:
+    - name: reviewer
+      description: Reviews changes before deploys
+      source: /Users/me/projects/agents/reviewer/AGENT.md
+
+  prompts:
+    - name: commit-message
+      description: Team commit format
+      source: https://github.com/myorg/team-prompts/blob/main/prompts/commit-message.md
+
+  mcps:
+    - name: github
+      description: Shared GitHub MCP config
+      source: https://github.com/myorg/claude-config/blob/main/mcp/github.json
+
+  plugins:
+    - name: review-toolkit
+      description: Pull request review workflows
+      marketplace: team-marketplace
+      marketplace_source:
+        source: github
+        repo: myorg/claude-marketplace
+      plugin: pr-review-toolkit
+      requires: [mcp:github]
 ```
 
-The catalog stores pointers, not copies. Skills live in their source repos. You pull on demand.
+The catalog stores pointers, not copies. You install or configure entries on demand with `/library use`, and refresh what is already present with `/library sync`.
 
-### Source Formats
+### Source-Backed Entries
 
-| Format             | Example                                                            |
-| ------------------ | ------------------------------------------------------------------ |
-| Local filesystem   | `/absolute/path/to/SKILL.md`                                       |
-| GitHub browser URL | `https://github.com/org/repo/blob/main/path/to/SKILL.md`           |
-| GitHub raw URL     | `https://raw.githubusercontent.com/org/repo/main/path/to/SKILL.md` |
+Skills, agents, prompts, and MCPs use `source`.
 
-The source points to a specific file. The system pulls the entire parent directory (skills include scripts, references, assets — not just the markdown file).
+| Format | Example |
+| --- | --- |
+| Local filesystem | `/absolute/path/to/SKILL.md` |
+| GitHub browser URL | `https://github.com/org/repo/blob/main/path/to/SKILL.md` |
+| GitHub raw URL | `https://raw.githubusercontent.com/org/repo/main/path/to/SKILL.md` |
 
-For private repos, authentication uses SSH keys or `GITHUB_TOKEN` automatically.
+Rules:
+- Skills point at `SKILL.md` and pull the whole parent directory.
+- Agents point at the Markdown file to install.
+- Prompts point at the Markdown command file to install.
+- MCPs point at a single JSON object compatible with `claude mcp add-json`.
+
+### Plugin Entries
+
+Plugins use marketplace metadata instead of `source`.
+
+Each plugin entry stores:
+- `marketplace`
+- `marketplace_source`
+- optional `plugin` when the install id differs from the catalog name
+
+`marketplace_source` should match Claude's supported marketplace source schema from the [plugins docs](https://code.claude.com/docs/en/plugins) and [settings docs](https://code.claude.com/docs/en/settings). Supported kinds include:
+- `github`
+- `git`
+- `url`
+- `npm`
+- `file`
+- `directory`
+- `hostPattern`
 
 ### Typed Dependencies
 
-Dependencies use typed references to avoid name collisions:
+Dependencies use typed references to avoid collisions:
 
 ```yaml
-requires: [skill:base-utils, agent:reviewer, prompt:task-router]
+requires: [skill:base-utils, agent:reviewer, prompt:task-router, mcp:github, plugin:review-toolkit]
 ```
 
-Dependencies are resolved and pulled first, recursively.
+Dependencies are resolved first, recursively.
+
+### Scopes and Targets
+
+Source-backed items use filesystem targets from `default_dirs`.
+
+Claude-native items use scopes from `default_scopes`:
+- `project`
+- `local`
+- `user`
+
+By default:
+- MCPs install at `project`
+- Plugins install at `project`
+- "global" maps to `user`
+
+The Library uses Claude's supported config surfaces for these:
+- MCPs via [`claude mcp`](https://docs.anthropic.com/en/docs/claude-code/mcp)
+- Plugins via [`claude plugin`](https://code.claude.com/docs/en/plugins) and Claude settings
+
+The Library never treats plugin caches like `~/.claude/plugins/cache` or `installed_plugins.json` as user-managed source of truth.
 
 ## Prerequisites
 
-- **Claude Code** (or a compatible agent harness that reads `.claude/skills/` — e.g., Pi)
-- **git** — for cloning sources and syncing the catalog
-- **gh** (optional) — GitHub CLI for forking, cloning, and private repo access. Install: `brew install gh` or see [gh docs](https://cli.github.com)
-- **GitHub SSH key or `GITHUB_TOKEN`** — for accessing private repos (not needed if using `gh auth login`)
-- **just** (optional) — for justfile shortcuts. Install: `brew install just` or see [just docs](https://github.com/casey/just)
+- **Claude Code** with `/mcp` and `/plugin` support available
+- **git** for cloning sources and syncing the catalog
+- **gh** (optional) for GitHub access and private repo workflows. Install: [gh docs](https://cli.github.com)
+- **GitHub SSH key or `GITHUB_TOKEN`** for private repos
+- **just** (optional) for justfile shortcuts. Install: [just docs](https://github.com/casey/just)
 
 ## Installation
 
-This is a template repo. You fork it, clone it into your global skills directory, and it becomes a `/library` slash command available in every Claude Code session.
+This is a template repo. Fork it, clone it into `~/.claude/skills/library`, and it becomes a `/library` slash command available in Claude Code.
 
 ### 1. Fork This Repo
 
-Fork to your own GitHub account (private repo recommended). This fork is your personal library catalog — you'll push catalog updates to it.
+Fork to your own GitHub account, ideally as a private repo. This fork becomes your personal or team library catalog.
 
 ```bash
-# Using GitHub CLI
 gh repo fork disler/the-library --private --clone=false
 ```
 
-Or fork manually via the GitHub UI.
-
 ### 2. Clone to Global Skills Directory
 
-Clone your fork into `~/.claude/skills/library`. This path is what makes `/library` available as a global slash command in Claude Code.
-
 ```bash
-# Using git
 mkdir -p ~/.claude/skills/library
 git clone <your-fork-url> ~/.claude/skills/library
+```
 
-# Or using GitHub CLI
+Or:
+
+```bash
 gh repo clone <yourname>/the-library ~/.claude/skills/library
 ```
 
 ### 3. Configure
 
-Open `~/.claude/skills/library/SKILL.md` and update the `## Variables` section with your fork URL. The agent reads these variables at runtime to know where to sync the catalog.
+Open `~/.claude/skills/library/SKILL.md` and update the variables:
 
 ```markdown
-# Before (template defaults)
-- **LIBRARY_REPO_URL**: `<your forked repo url>`
-
-# After (your values)
 - **LIBRARY_REPO_URL**: `https://github.com/yourname/the-library.git`
 ```
 
-The other two variables (`LIBRARY_YAML_PATH` and `LIBRARY_SKILL_DIR`) are correct by default if you cloned to `~/.claude/skills/library/`.
+The default `LIBRARY_YAML_PATH` and `LIBRARY_SKILL_DIR` are correct if you cloned into `~/.claude/skills/library/`.
 
 ### 4. Verify
 
-Start a new Claude Code session anywhere. `/library list` should work and show an empty catalog.
+Start a new Claude Code session anywhere and run:
+
+```text
+/library list
+```
+
+You should see an empty catalog.
 
 ## Quick Start
 
 ![Full Workflow](images/45_solution_full_workflow.svg)
 
-Here's the typical workflow: **build → catalog → distribute → use**.
+The usual flow is: build -> catalog -> distribute -> use.
 
-### Add a skill to the catalog
+### Add a skill
 
-You built a deploy skill in one of your repos. Register it:
-
-```
+```text
 /library add deploy skill from https://github.com/yourorg/infra-tools/blob/main/skills/deploy/SKILL.md
 ```
 
-This adds a reference to `library.yaml` and pushes the update to your fork.
+### Add an MCP
 
-### Use it in another project
-
-On another device, repo, or agent:
-
+```text
+/library add github mcp from https://github.com/yourorg/claude-config/blob/main/mcp/github.json
 ```
+
+Keep MCP definitions shareable. Use env placeholders instead of raw secrets.
+
+### Add a plugin
+
+```text
+/library add plugin named review-toolkit from marketplace team-marketplace using github repo yourorg/claude-marketplace install plugin pr-review-toolkit
+```
+
+### Use entries elsewhere
+
+```text
 /library use deploy
+/library use github
+/library use review-toolkit globally
 ```
 
-This pulls the skill from the source repo into `.claude/skills/deploy/`.
+- Skills, agents, and prompts copy into your local Claude directories.
+- MCPs configure Claude using `claude mcp add-json`.
+- Plugins configure marketplaces and install via Claude's native plugin flow.
 
-Want it globally available on this machine?
+### Push source-backed changes
 
-```
-/library use deploy install globally
-```
-
-### Push changes back
-
-You improved the skill locally. Push the update to the source repo:
-
-```
+```text
 /library push deploy
 ```
 
-Now every device that runs `/library sync` gets the latest version.
+`push` is for skills, agents, and prompts. MCPs and plugins stay source-of-truth in their JSON or marketplace repos and are not pushed via `/library push` in v1.
 
 ### Sync everything
 
-Pull the latest version of all installed items:
-
-```
+```text
 /library sync
 ```
 
+This refreshes every installed skill, agent, prompt, MCP, and plugin that the current machine already has configured.
+
 ## Commands
 
-| Command                     | What It Does                                               |
-| --------------------------- | ---------------------------------------------------------- |
-| `/library install`          | First-time setup — fork, clone, configure                  |
-| `/library add <details>`    | Register a new entry in the catalog                        |
-| `/library use <name>`       | Pull from source into local directory (install or refresh) |
-| `/library push <name>`      | Push local changes back to the source                      |
-| `/library remove <name>`    | Remove from catalog and optionally delete local copy       |
-| `/library list`             | Show full catalog with install status                      |
-| `/library sync`             | Re-pull all installed items from source                    |
-| `/library search <keyword>` | Find entries by name or description                        |
+| Command | What It Does |
+| --- | --- |
+| `/library install` | First-time setup - fork, clone, configure |
+| `/library add <details>` | Register a new skill, agent, prompt, MCP, or plugin |
+| `/library use <name>` | Install, configure, or refresh an entry |
+| `/library push <name>` | Push local changes back to a source-backed entry |
+| `/library remove <name>` | Remove from the catalog and optionally remove local state |
+| `/library list` | Show the full catalog with install/config status |
+| `/library sync` | Refresh all installed and configured items |
+| `/library search <keyword>` | Find entries by name or description |
 
 ### Justfile Shortcuts
 
-The included `justfile` lets you run library commands from your terminal without an interactive Claude session.
+The included `justfile` lets you run Library commands from a terminal without opening an interactive Claude session.
 
 ```bash
-just list                  # List catalog
-just use my-skill          # Pull a skill
-just push my-skill         # Push changes back
+just list
+just use my-skill
+just push my-skill
 just add "name: foo, description: bar, source: /path/to/SKILL.md"
-just sync                  # Re-pull all installed items
+just sync
 just search "keyword"
 ```
 
-> **Note:** Justfile recipes use `--dangerously-skip-permissions` because the agent needs filesystem and git access to clone, copy, and push. Review the `justfile` if you want to modify this behavior.
+> Note: the recipes use `--dangerously-skip-permissions` because the agent needs filesystem and git access for clone, copy, and sync operations.
 
 ## Architecture
 
-```
-~/.claude/skills/library/     # The Library skill (globally installed)
-    SKILL.md                  # Agent instructions — the brain
-    library.yaml              # Your catalog of references
-    cookbook/                  # Step-by-step guides for each command
+```text
+~/.claude/skills/library/     # The Library skill
+    SKILL.md                  # Agent instructions
+    library.yaml              # Catalog of references
+    cookbook/                 # Command-specific execution guides
         install.md
         add.md
         use.md
@@ -246,33 +330,33 @@ just search "keyword"
         list.md
         sync.md
         search.md
-    justfile                  # CLI shorthand for all commands
+    justfile                  # Terminal shortcuts
     README.md                 # This file
 ```
 
 ## Design Principles
 
-- **Private-first**: Built for your specialized, competitive-edge agentics. Not a public marketplace.
-- **Reference-based**: The catalog stores pointers, not copies. Skills live in their source repos.
-- **Pure agent**: No scripts, no build tools. The SKILL.md teaches the agent everything it needs to know.
-- **Agent-agnostic**: Default target is `.claude/skills/` but supports any directory for any agent harness.
-- **Catalog, not manifest**: Entries define what's available, not what's installed. Pull on demand.
+- **Private-first**: Built for specialized, competitive agentics.
+- **Reference-based**: The catalog stores pointers, not payload copies.
+- **Claude-native where needed**: MCP and plugin sync use Claude's supported config and CLI surfaces.
+- **Pure agent**: The behavior lives in markdown instructions, not custom tooling.
+- **Catalog, not manifest**: Entries define what is available, not what must be installed everywhere.
 
 ## The Agentic Stack
 
 ![The Agentic Stack](images/03_agentic_stack.svg)
 
-| Layer           | Purpose                                        |
-| --------------- | ---------------------------------------------- |
-| **Skills**      | Raw capabilities — what an agent can do        |
-| **Agents**      | Scale + parallelism + specialization           |
-| **Prompts**     | Orchestration — coordinate skills and agents   |
-| **Justfile**    | Terminal access without an interactive session |
-| **The Library** | Distribution across devices, teams, and agents |
+| Layer | Purpose |
+| --- | --- |
+| **Skills** | Raw capabilities |
+| **Agents** | Specialization and parallelism |
+| **Prompts** | Orchestration and routing |
+| **MCPs** | External systems and data planes |
+| **Plugins** | Bundled Claude-native extensions |
+| **The Library** | Distribution and sync across all of the above |
 
 ## Master Agentic Coding
-> Prepare for the future of software engineering
 
-Agentic Engineering is a NEW SKILL for software engineers. And soon it will be a required skill for software engineers. Master it before the masses with [Tactical Agentic Coding](https://agenticengineer.com/tactical-agentic-coding?y=tlibms)
+Prepare for the future of software engineering with [Tactical Agentic Coding](https://agenticengineer.com/tactical-agentic-coding?y=tlibms).
 
-Follow the [IndyDevDan YouTube channel](https://www.youtube.com/@indydevdan) to improve your agentic coding advantage.
+Follow the [IndyDevDan YouTube channel](https://www.youtube.com/@indydevdan) to keep sharpening your agentic engineering advantage.

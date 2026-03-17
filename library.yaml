@@ -9,7 +9,19 @@ default_dirs:
     - default: .claude/commands/
     - global: ~/.claude/commands/
 
+default_scopes:
+  mcps:
+    - default: project
+    - local: local
+    - global: user
+  plugins:
+    - default: project
+    - local: local
+    - global: user
+
 library:
   skills: []
   agents: []
   prompts: []
+  mcps: []
+  plugins: []
